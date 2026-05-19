@@ -1,0 +1,52 @@
+{
+	"folders": [
+		{
+			"path": "../../test"
+		},
+		{
+			"name": "Wifi extender",
+			"path": "../../Wifi extender"
+		},
+		{
+			"name": "test_2mcu_comm",
+			"path": "../../test_2mcu_comm"
+		},
+		{
+			"name": "Master",
+			"path": "../../test_2mcu_comm_simple/Master"
+		},
+		{
+			"name": "Slave",
+			"path": "../../test_2mcu_comm_simple/Slave"
+		},
+		{
+			"name": "DebugESP32",
+			"path": "../../DebugESP32"
+		},
+		{
+			"name": "prototypeSD",
+			"path": "../../prototypeSD"
+		},
+		{
+			"name": "dumpInfoNFC",
+			"path": "../../dumpInfoNFC"
+		},
+		{
+			"name": "intergrate0_1",
+			"path": "../../intergrate0_1"
+		},
+		{
+			"name": "testMilis",
+			"path": "../../testMilis"
+		},
+		{
+			"name": "DebugESP32_2",
+			"path": "../../DebugESP32_2"
+		},
+		{
+			"name": "stateMachinePI",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
