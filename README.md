@@ -30,3 +30,30 @@
   - VCC	5V (or 3.3V)*
 - Update device used here
 - Update pinout to esp32 here
+
+## Propose new pin allocation
+TFT display
+- SCK 18
+- SDA 23
+- RST 13
+- D/C 14
+- CS  16
+
+- T-CLK 18
+- T-DI  23
+- T-DO  19
+- T-CS  17
+
+NFC
+- SS 5
+- RST 22
+- CLK 18
+- MOSI 23
+- MISO 19
+
+Load cell
+- DT 34
+- CLK 4
+
+Magnetic lock
+- 33
