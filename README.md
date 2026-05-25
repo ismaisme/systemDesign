@@ -57,3 +57,22 @@ Load cell
 
 Magnetic lock
 - 33
+
+## Implemtation using both SPI (VSPI and HSPI)
+
+TFT Display
+- TFT MISO 19
+- TFT MOSI 23 (Touch only)
+- SCLK 18
+- CS 16
+- DC 17
+- RST 4
+- T_CS 21
+- BL 3v3
+
+NFC RC522
+RFID_RST_PIN    27          
+RFID_SS_PIN     26   
+HSPI_CLK        14
+HSPI_MISO       12
+HSPI_MOSI       13
