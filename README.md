@@ -60,7 +60,7 @@ Magnetic lock
 
 ## Implemtation using both SPI (VSPI and HSPI)
 
-TFT Display
+TFT Display (VSPI)
 - TFT MISO 19
 - TFT MOSI 23 (Touch only)
 - SCLK 18
@@ -70,9 +70,9 @@ TFT Display
 - T_CS 21
 - BL 3v3
 
-NFC RC522
-RFID_RST_PIN    27          
-RFID_SS_PIN     26   
-HSPI_CLK        14
-HSPI_MISO       12
-HSPI_MOSI       13
+NFC RC522 (HSPI)
+- RFID_RST_PIN    27
+- RFID_SS_PIN     26
+- HSPI_CLK        14
+- HSPI_MISO       12
+- HSPI_MOSI       13
