@@ -1,1 +1,2 @@
-miguelbalboa/MFRC522@^1.4.12
+https://github.com/OSSLibraries/Arduino_MFRC522v2.git
+bodmer/TFT_eSPI @ ^2.5.43

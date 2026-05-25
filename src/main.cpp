@@ -1,209 +1,175 @@
 #include <Arduino.h>
 #include <SPI.h>
-#include <MFRC522.h>
+#include <TFT_eSPI.h>
+#include <MFRC522v2.h>
+#include <MFRC522DriverSPI.h>
+#include <MFRC522DriverPinSimple.h>
+#include <MFRC522Debug.h>
 
-// 3 LED, 1 Buz, 1 button
-#define redLED 4
-#define grnLED 16
-#define bluLED 17
-#define buzPin 33
-#define pushBtn 34
+TFT_eSPI tft = TFT_eSPI();
 
-// --- RC522 RFID PINS ---
-#define SS_PIN  5
-#define RST_PIN 22
+// --- Dedicated MFRC522 Pins (HSPI Bus) ---
+#define RFID_RST_PIN    27          
+#define RFID_SS_PIN     26   
+#define HSPI_CLK        14
+#define HSPI_MISO       12
+#define HSPI_MOSI       13
 
-MFRC522 rfid(SS_PIN, RST_PIN); // Create MFRC522 instance
+// Instantiate the dedicated HSPI hardware class
+SPIClass hspiSPI(HSPI);
 
-// Function Prototype
-void blinkRedLed();
-void blinkGrnLed();
-void displayState(String currState);
+// Create the modular components required by MFRC522v2
+MFRC522DriverPinSimple ss_pin(RFID_SS_PIN);
+// Pass both the CS pin driver and our dedicated HSPI bus instance to the SPI driver
+MFRC522DriverSPI driver{ss_pin, hspiSPI}; 
+MFRC522 mfrc522{driver};
+
+// Declare the states in meaningful English using enum class
+enum class state : uint8_t {
+  IDLE,      
+  SCAN,    
+  OPENED,   
+  DOORCLOSE, 
+};
+
+// Keep track of the current State
+static state currState = state::IDLE;
+static bool stateChanged = true; // Prevents the screen from flickering by drawing only once
+
+void drawDefaultScreen(const char* statusText, bool invert) {
+  tft.invertDisplay(invert);
+  tft.fillScreen(TFT_BLACK);
+  tft.drawRect(0, 0, tft.width(), tft.height(), TFT_GREEN);
+  tft.setCursor(0, 4, 4);
+
+  tft.setTextColor(TFT_WHITE);
+  tft.print(" Status:"); 
+  tft.println(statusText);
+  tft.println(" White text");
+  
+  tft.setTextColor(TFT_RED);
+  tft.println(" Red text");
+  
+  tft.setTextColor(TFT_GREEN);
+  tft.println(" Green text");
+  
+  tft.setTextColor(TFT_BLUE);
+  tft.println(" Blue text");
+}
+
+void handleStateMachine(void);
 
 void setup() {
   Serial.begin(115200);
 
-  // Initialize SPI bus and RFID sensor
-  SPI.begin(); 
-  rfid.PCD_Init();
+  // 1. Initialize your screen on the primary default bus
+  tft.init();
+  tft.setRotation(0);
+  drawDefaultScreen("Ready to Scan", false);
 
-  pinMode(pushBtn, INPUT);
+  // --- Touch Calibration ---
+  // These are standard baseline calibration coordinates for TFT_eSPI
+  uint16_t calData[5] = { 200, 3700, 240, 3600, 0 };
+  tft.setTouch(calData);
 
-  pinMode(redLED, OUTPUT);
-  pinMode(grnLED, OUTPUT);
-  pinMode(bluLED, OUTPUT);
+  // 2. Initialize the dedicated HSPI bus interface using your clean pins
+  hspiSPI.begin(HSPI_CLK, HSPI_MISO, HSPI_MOSI, RFID_SS_PIN);
 
-	digitalWrite(grnLED, LOW);
-  digitalWrite(redLED, LOW);
-  digitalWrite(bluLED, LOW);
+  // 3. Boot up the RFID reader using the v2 driver initialization layout
+  mfrc522.PCD_Init(); 
+  delay(4);
 
-	Serial.println("\nSetup completed\n\n\n");
+  Serial.println(F("Setup Complete"));
 }
 
-// Very simple and tidy loop that calls two functions
 void loop() {
+  handleStateMachine();  // Task 2: Process elevator inputs, timings, and RFID
+}
+
+void handleStateMachine() {
   static unsigned long mainMillis = millis();
+  static uint8_t countdown = 0;
+  static unsigned long beepMillis = 0;
 
-  // countdown for timeout
-  static uint8_t countdown;
-  // Delay until elevator arrives
-  static uint16_t elevatorDelay;
+  uint16_t t_x = 0, t_y = 0; // Variables to store touch locations
 
-  // Timer for notification process has completed
-  static unsigned long beepMillis;
-
-  // Declare the states in meaningful English. Enums start enumerating
-  // at zero, incrementing in steps of 1 unless overridden. We use an
-  // enum 'class' here for type safety and code readability
-  enum class state : uint8_t {
-      IDLE,      // defaults to 0
-      SCAN,    // defaults to 1
-      OPENED,   // defaults to 2
-      DOORCLOSE, // defaults to 3
-  };
-
-  // Keep track of the current State (it's an elevatorState variable)
-  static state currState = state::IDLE;
-
-  // Process according to our State Diagram
   switch (currState) {
+    case state::IDLE:
+      if (stateChanged) {
+          drawDefaultScreen("IDLE", false);
+          stateChanged = false;
+      }
 
-      // Initial state (or final returned state)
-      case state::IDLE:
-          displayState("IDLE state");
-          blinkRedLed();
+      // Check if screen is pressed
+      if (tft.getTouch(&t_x, &t_y)) {
+          currState = state::SCAN;
+          stateChanged = true;
+          countdown = 0;
+          mainMillis = millis();
+          delay(300); // Simple debounce to prevent double-triggering
+      }
+      break;
+
+    case state::SCAN:
+      if (stateChanged) {
+            drawDefaultScreen("SCAN", true);
+            stateChanged = false;
+        }
+      
+      if (millis() - mainMillis >= 1000) {
+          mainMillis = millis(); 
+          Serial.print(".");
+          countdown++; 
           
-          // Someone pushed the button yet?
-          if (digitalRead(pushBtn) == LOW) {
-              // Set the millis counter for the elevator arrival timer
-              mainMillis = millis();
-              countdown = 1; 
-
-              // Move to next state
-              digitalWrite(redLED, LOW);
-              currState = state::SCAN;
-              delay(1000);
-          }
-          break;
-
-      case state::SCAN:
-          displayState("SCAN state\nCountdown: ");
-          // Light the 'elevator called' LED
-          digitalWrite(bluLED, HIGH);
+        if (countdown > 10) {
+            Serial.println("\nTimeout! Returning to IDLE.");
+            currState = state::IDLE;
+            break; 
+        }
+      }
+      
+      if (mfrc522.PICC_IsNewCardPresent()) {
+        if (mfrc522.PICC_ReadCardSerial()) {
+          Serial.println("\n[RFID] Card Detected successfully!");
           
-          // 1. Check if exactly 1 second (1000ms) has passed
-          if (millis() - mainMillis >= 1000) {
-              // Reset the timer for the NEXT second
-              mainMillis = millis(); 
-              
-              // Print the countdown text
-              Serial.print(".");
-
-              // Increment the counter AFTER printing
-              countdown++; 
-              
-              // 2. If 10 seconds pass (countdown goes from 1 to 11), timeout!
-              if (countdown > 10) {
-                  Serial.println("\nTimeout! Returning to IDLE.");
-                  digitalWrite(bluLED, LOW);
-                  currState = state::IDLE;
-                  break; // Exit the case immediately
-              }
+          Serial.print("Card UID: ");
+          for (byte i = 0; i < mfrc522.uid.size; i++) {
+              Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+              Serial.print(mfrc522.uid.uidByte[i], HEX);
           }
-          
-          // 2. Check if a new RFID card is present
-          if (rfid.PICC_IsNewCardPresent()) {
-              // Verify if the UID has been read cleanly
-              if (rfid.PICC_ReadCardSerial()) {
-                  Serial.println("\n[RFID] Card Detected successfully!");
-                  
-                  // Optional: Print the UID numbers to Serial Monitor
-                  Serial.print("Card UID: ");
-                  for (byte i = 0; i < rfid.uid.size; i++) {
-                      Serial.print(rfid.uid.uidByte[i] < 0x10 ? " 0" : " ");
-                      Serial.print(rfid.uid.uidByte[i], HEX);
-                  }
-                  Serial.println();
+          Serial.println();
 
-                  // Halt PICC to stop reading the same card repeatedly
-                  rfid.PICC_HaltA();
+          mfrc522.PICC_HaltA();
+          currState = state::OPENED;
+        }
+      }
+      break;
 
-                  // Valid card detected! Transition to OPENED state
-                  currState = state::OPENED;
-              }
-          }
-          break;
+    case state::OPENED:
+        drawDefaultScreen("OPENED", true);
+        // digitalWrite(relay, HIGH);
+        // tone(buzPin, 3000, 1000);
+        // beepMillis = millis();
+        delay(1000);
+        currState = state::DOORCLOSE;
+        break;
 
+    case state::DOORCLOSE:
+      if (stateChanged) {
+          drawDefaultScreen("DOORCLOSE", false); // Fixed copy-paste status text string
+          stateChanged = false;
+      }
+    
+      if (millis() - beepMillis >= 2000) {
+          // noTone(buzPin);
+          // digitalWrite(grnLED, LOW);
+          currState = state::IDLE;
+          stateChanged = true;
+      }
+      // digitalWrite(relay, LOW);
+      break;
 
-      case state::OPENED:
-          displayState("OPENED State");
-
-          // Quick beep to alert user that elevator has arrived
-          tone(buzPin, 3000, 1000);
-
-          // Set the timer for the notification
-          beepMillis = millis();
-
-          // Move to next state
-          currState = state::DOORCLOSE;
-          break;
-
-      case state::DOORCLOSE:
-          displayState("DOORS CLOSED state");
-
-          // Extinguish the LED
-          digitalWrite(bluLED, LOW);
-          blinkGrnLed();
-          // Time to turn off the beeper yet?
-          if (millis() - beepMillis >= 2000) {
-              // Turn off beeper
-              noTone(buzPin);
-
-              // Move to next state
-              digitalWrite(grnLED, LOW);
-              currState = state::IDLE;
-          }
-          break;
-
-      default:
-          // Nothing to do here
-          Serial.println("'Default' Switch Case reached - Error");
+    default:
+        Serial.println("'Default' Switch Case reached - Error");
   }
-}
-
-// RED led blink
-void blinkRedLed() {
-	// This unsigned long integer declaration is only 
-	// actioned ONCE by the compiler before moving the
-	// variable outside of the loop
-  static unsigned long redMillis = millis();
-
-	// If enough time has passed (500mS) we toggle the flash
-  if (millis() - redMillis > 500) {
-		// Set the red LED to whatever it is NOT now
-    digitalWrite(redLED, !digitalRead(redLED));
-		
-		// We must reset the local millis variable
-    redMillis = millis();
-  }
-}
-
-// GREEN led blink - same as above, just runs faster
-void blinkGrnLed() {
-  static unsigned long grnMillis = millis();
-
-  if (millis() - grnMillis > 100) {
-    digitalWrite(grnLED, !digitalRead(grnLED));
-    grnMillis = millis();
-  }
-}
-
-// Helper routine to track state machine progress
-void displayState(String currState) {
-    static String prevState = "";
-
-    if (currState != prevState) {
-        Serial.println(); Serial.println(currState);
-        prevState = currState;
-    }
 }
