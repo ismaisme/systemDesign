@@ -10,6 +10,7 @@
             "includePath": [
                 "/home/server/Documents/PlatformIO/Projects/stateMachinePI/include",
                 "/home/server/Documents/PlatformIO/Projects/stateMachinePI/src",
+                "/home/server/Documents/PlatformIO/Projects/stateMachinePI/.pio/libdeps/esp32dev/HX711/src",
                 "/home/server/Documents/PlatformIO/Projects/stateMachinePI/.pio/libdeps/esp32dev/RFID_MFRC522v2/src",
                 "/home/server/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 "/home/server/Documents/PlatformIO/Projects/stateMachinePI/.pio/libdeps/esp32dev/TFT_eSPI",
@@ -301,6 +302,7 @@
                 "path": [
                     "/home/server/Documents/PlatformIO/Projects/stateMachinePI/include",
                     "/home/server/Documents/PlatformIO/Projects/stateMachinePI/src",
+                    "/home/server/Documents/PlatformIO/Projects/stateMachinePI/.pio/libdeps/esp32dev/HX711/src",
                     "/home/server/Documents/PlatformIO/Projects/stateMachinePI/.pio/libdeps/esp32dev/RFID_MFRC522v2/src",
                     "/home/server/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     "/home/server/Documents/PlatformIO/Projects/stateMachinePI/.pio/libdeps/esp32dev/TFT_eSPI",

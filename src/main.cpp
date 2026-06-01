@@ -5,6 +5,7 @@
 #include <MFRC522DriverSPI.h>
 #include <MFRC522DriverPinSimple.h>
 #include <MFRC522Debug.h>
+#include "HX711.h"
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -24,16 +25,32 @@ MFRC522DriverPinSimple ss_pin(RFID_SS_PIN);
 MFRC522DriverSPI driver{ss_pin, hspiSPI}; 
 MFRC522 mfrc522{driver};
 
+// --- Peripherals Pins ---
+#define LOADCELL_DT    33
+#define LOADCELL_CLK   32
+#define MAG_LOCK_PIN   25
+
+#define MAG_LOCK_PIN   25
+
+HX711 scale;
+
+// variable 
+double initial_weight = 0.0;
+double current_weight = 0.0;
+double change_weight  = 0.0;
+double total_price = 0.0;
+const double PRICE_PER_GRAM = 0.05; 
+
 // Declare the states in meaningful English using enum class
 enum class state : uint8_t {
-  IDLE,      
-  SCAN,    
-  OPENED,   
-  DOORCLOSE, 
+  STATE_IDLE,      
+  STATE_OPEN,    
+  STATE_LOAD_DETECTING,   
+  STATE_CLOSE, 
 };
 
 // Keep track of the current State
-static state currState = state::IDLE;
+static state currState = state::STATE_IDLE;
 static bool stateChanged = true; // Prevents the screen from flickering by drawing only once
 
 void drawDefaultScreen(const char* statusText, bool invert) {
@@ -45,16 +62,6 @@ void drawDefaultScreen(const char* statusText, bool invert) {
   tft.setTextColor(TFT_WHITE);
   tft.print(" Status:"); 
   tft.println(statusText);
-  tft.println(" White text");
-  
-  tft.setTextColor(TFT_RED);
-  tft.println(" Red text");
-  
-  tft.setTextColor(TFT_GREEN);
-  tft.println(" Green text");
-  
-  tft.setTextColor(TFT_BLUE);
-  tft.println(" Blue text");
 }
 
 void handleStateMachine(void);
@@ -65,7 +72,7 @@ void setup() {
   // 1. Initialize your screen on the primary default bus
   tft.init();
   tft.setRotation(0);
-  drawDefaultScreen("Ready to Scan", false);
+  drawDefaultScreen("Ready to STATE_OPEN", false);
 
   // --- Touch Calibration ---
   // These are standard baseline calibration coordinates for TFT_eSPI
@@ -79,11 +86,40 @@ void setup() {
   mfrc522.PCD_Init(); 
   delay(4);
 
+  pinMode(MAG_LOCK_PIN, OUTPUT);
+  digitalWrite(MAG_LOCK_PIN, LOW); // Enforce structural locking state
+
+  scale.begin(LOADCELL_DT, LOADCELL_CLK);
+  scale.set_offset(-445749); 
+  scale.set_scale(386.286530);
+  delay(200);
+  scale.tare();  
+
   Serial.println(F("Setup Complete"));
 }
 
 void loop() {
   handleStateMachine();  // Task 2: Process elevator inputs, timings, and RFID
+
+  tft.setCursor(5, 280, 4);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK); 
+  tft.print(" Weight: ");
+
+  // 4. Print the actual weight
+  tft.setCursor(100, 280, 4);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK); 
+  tft.print(scale.get_units(1));
+  tft.print("g      ");
+
+  tft.setCursor(5, 200, 4);
+  tft.print(" Initial: ");
+  tft.print(initial_weight);
+  tft.print("g      ");
+
+  tft.setCursor(5, 230, 4);
+  tft.print(" change: ");
+  tft.print(change_weight);
+  tft.print("g      ");
 }
 
 void handleStateMachine() {
@@ -91,85 +127,104 @@ void handleStateMachine() {
   static uint8_t countdown = 0;
   static unsigned long beepMillis = 0;
 
+
   uint16_t t_x = 0, t_y = 0; // Variables to store touch locations
 
   switch (currState) {
-    case state::IDLE:
+    case state::STATE_IDLE:
       if (stateChanged) {
-          drawDefaultScreen("IDLE", false);
-          stateChanged = false;
+        drawDefaultScreen("STATE_IDLE\nWaiting for card...", false);
+        digitalWrite(MAG_LOCK_PIN, LOW);
+        stateChanged = false;
+      }
+      if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+        Serial.print("NFC Card Detected! UID:");
+        for (byte i = 0; i < mfrc522.uid.size; i++) {
+          Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+          Serial.print(mfrc522.uid.uidByte[i], HEX);
+        }
+        Serial.println();
+        mfrc522.PICC_HaltA(); 
+        
+        currState = state::STATE_OPEN;
+        stateChanged = true;  
       }
 
-      // Check if screen is pressed
+      break;
+
+    case state::STATE_OPEN:
+      if (stateChanged) {
+        drawDefaultScreen("STATE_OPEN\nTouch if food taken", false);
+        digitalWrite(MAG_LOCK_PIN, HIGH);
+        initial_weight = scale.get_units(10);
+        if (initial_weight < 0.0) initial_weight = 0.0;
+        stateChanged = false;
+      }
+
+      
       if (tft.getTouch(&t_x, &t_y)) {
-          currState = state::SCAN;
-          stateChanged = true;
-          countdown = 0;
-          mainMillis = millis();
-          delay(300); // Simple debounce to prevent double-triggering
+        currState = state::STATE_LOAD_DETECTING;
+        stateChanged = true;
+        delay(300); // Simple debounce to prevent double-triggering
       }
       break;
 
-    case state::SCAN:
+    case state::STATE_LOAD_DETECTING:
       if (stateChanged) {
-            drawDefaultScreen("SCAN", true);
-            stateChanged = false;
-        }
-      
-      if (millis() - mainMillis >= 1000) {
-          mainMillis = millis(); 
-          Serial.print(".");
-          countdown++; 
-          
-        if (countdown > 10) {
-            Serial.println("\nTimeout! Returning to IDLE.");
-            currState = state::IDLE;
-            break; 
-        }
-      }
-      
-      if (mfrc522.PICC_IsNewCardPresent()) {
-        if (mfrc522.PICC_ReadCardSerial()) {
-          Serial.println("\n[RFID] Card Detected successfully!");
-          
-          Serial.print("Card UID: ");
-          for (byte i = 0; i < mfrc522.uid.size; i++) {
-              Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-              Serial.print(mfrc522.uid.uidByte[i], HEX);
-          }
-          Serial.println();
-
-          mfrc522.PICC_HaltA();
-          currState = state::OPENED;
-        }
-      }
-      break;
-
-    case state::OPENED:
-        drawDefaultScreen("OPENED", true);
-        // digitalWrite(relay, HIGH);
-        // tone(buzPin, 3000, 1000);
-        // beepMillis = millis();
+        digitalWrite(MAG_LOCK_PIN, LOW);
+        // drawDefaultScreen("STATE_LOAD_DETECTING\nSee if any change...", false);
+        current_weight = scale.get_units(10);
+        change_weight = current_weight - initial_weight;
+        
+        total_price = change_weight * PRICE_PER_GRAM;
         delay(1000);
-        currState = state::DOORCLOSE;
-        break;
 
-    case state::DOORCLOSE:
+        currState = state::STATE_CLOSE;
+        stateChanged = true;
+      }
+
+      break;
+
+    case state::STATE_CLOSE:
       if (stateChanged) {
-          drawDefaultScreen("DOORCLOSE", false); // Fixed copy-paste status text string
-          stateChanged = false;
+        // drawDefaultScreen("STATE_CLOSE", false); // Fixed copy-paste status text string
+        stateChanged = false;
+      
+        tft.fillScreen(TFT_BLACK);
+        tft.drawRect(0, 0, tft.width(), tft.height(), TFT_RED); // Red frame for locked status
+        
+        tft.setCursor(10, 20, 4);
+        tft.setTextColor(TFT_WHITE);
+        tft.println("   RECEIPT");
+        
+        tft.setCursor(10, 70, 4);
+        tft.print(" Taken: ");
+        tft.print(change_weight, 1);
+        tft.println(" g");
+        
+        tft.setCursor(10, 120, 4);
+        tft.print(" Price: $");
+        tft.println(total_price, 2);
+
+        tft.setCursor(10, 180, 2);
+        tft.setTextColor(TFT_GREEN);
+        tft.println(" Securely Locked.");
+        tft.println(" Resetting in 5 seconds...");
+
+        // Capture time to start our 5-second countdown window
+        mainMillis = millis();
+        stateChanged = false;
       }
     
-      if (millis() - beepMillis >= 2000) {
-          // noTone(buzPin);
-          // digitalWrite(grnLED, LOW);
-          currState = state::IDLE;
-          stateChanged = true;
+      // 5. Wait non-blockingly for 5 seconds before going back to looking for a card
+      if (millis() - mainMillis >= 5000) {
+        currState = state::STATE_IDLE;
+        stateChanged = true;
       }
-      // digitalWrite(relay, LOW);
+    
       break;
 
     default:
-        Serial.println("'Default' Switch Case reached - Error");
+      Serial.println("'Default' Switch Case reached - Error");
   }
 }

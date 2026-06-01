@@ -76,3 +76,7 @@ NFC RC522 (HSPI)
 - HSPI_CLK        14
 - HSPI_MISO       12
 - HSPI_MOSI       13
+
+HX711
+- DT 33
+- SCK 32

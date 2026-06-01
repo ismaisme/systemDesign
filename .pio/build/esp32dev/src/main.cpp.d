@@ -241,4 +241,5 @@
  .pio/libdeps/esp32dev/RFID_MFRC522v2/src/MFRC522DriverSPI.h \
  .pio/libdeps/esp32dev/RFID_MFRC522v2/src/MFRC522DriverPin.h \
  .pio/libdeps/esp32dev/RFID_MFRC522v2/src/MFRC522DriverPinSimple.h \
- .pio/libdeps/esp32dev/RFID_MFRC522v2/src/MFRC522Debug.h
+ .pio/libdeps/esp32dev/RFID_MFRC522v2/src/MFRC522Debug.h \
+ .pio/libdeps/esp32dev/HX711/src/HX711.h
